@@ -393,8 +393,9 @@ func (manager *WebRTCManagerCtx) CreatePeer(session types.Session) (*webrtc.Sess
 			return
 		}
 
-		// check if this is a screen share track
-		if track.StreamID() == "screen-share" {
+		// check if this is a screen share track from the sharing session
+		// (browsers assign random UUIDs to MediaStream IDs, so we can't check StreamID)
+		if manager.screenShare.IsActive() && manager.screenShare.SharingSessionID() == session.ID() {
 			logger.Info().Msg("received screen share track")
 
 			if track.Kind() == webrtc.RTPCodecTypeVideo {
@@ -649,10 +650,37 @@ func (manager *WebRTCManagerCtx) ScreenShareSessionID() string {
 
 // addRelayTrackToAllPeers adds a relay track to all connected peers except the sharer.
 func (manager *WebRTCManagerCtx) addRelayTrackToAllPeers(sharerSessionID string, relayTrack *webrtc.TrackLocalStaticRTP) {
-	// Note: This triggers renegotiation via OnNegotiationNeeded on each peer connection.
-	// The peer connections are stored in sessions, we need to iterate through them.
-	// This is handled by the session manager in the websocket layer.
 	manager.logger.Info().
 		Str("sharer_session_id", sharerSessionID).
-		Msg("relay track created, renegotiation will be triggered by OnNegotiationNeeded")
+		Str("track_id", relayTrack.ID()).
+		Msg("adding relay track to all peers")
+
+	// iterate over all sessions and add the relay track to each peer connection
+	manager.screenShare.sessions.Range(func(session types.Session) bool {
+		// skip the sharer
+		if session.ID() == sharerSessionID {
+			return true
+		}
+
+		peer := session.GetWebRTCPeer()
+		if peer == nil {
+			return true
+		}
+
+		// Get the peer connection from the peer context
+		peerCtx, ok := peer.(*WebRTCPeerCtx)
+		if !ok {
+			manager.logger.Warn().Str("session_id", session.ID()).Msg("peer is not a WebRTCPeerCtx")
+			return true
+		}
+
+		_, err := peerCtx.connection.AddTrack(relayTrack)
+		if err != nil {
+			manager.logger.Err(err).Str("session_id", session.ID()).Msg("failed to add relay track to peer")
+			return true
+		}
+
+		manager.logger.Info().Str("session_id", session.ID()).Msg("added screen share relay track to peer")
+		return true
+	})
 }
