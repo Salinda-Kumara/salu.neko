@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/gorilla/websocket"
 	"github.com/pion/webrtc/v3"
 	"github.com/spf13/viper"
 
