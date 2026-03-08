@@ -674,9 +674,13 @@ func (manager *WebRTCManagerCtx) addRelayTrackToAllPeers(sharerSessionID string,
 			return true
 		}
 
-		_, err := peerCtx.connection.AddTrack(relayTrack)
+		// Use AddTransceiverFromTrack to explicitly set the Stream ID so the client can identify it
+		_, err := peerCtx.connection.AddTransceiverFromTrack(relayTrack, webrtc.RTPTransceiverInit{
+			Direction: webrtc.RTPTransceiverDirectionSendonly,
+			StreamIDs: []string{"screen-share"},
+		})
 		if err != nil {
-			manager.logger.Err(err).Str("session_id", session.ID()).Msg("failed to add relay track to peer")
+			manager.logger.Err(err).Str("session_id", session.ID()).Msg("failed to add relay transceiver to peer")
 			return true
 		}
 
