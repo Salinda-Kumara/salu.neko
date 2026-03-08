@@ -45,7 +45,7 @@
             <span>{{ screenShareDisplayName }}</span>
             <i class="fas fa-times" @click.stop="closeScreenShareOverlay" />
           </div>
-          <video ref="screenShareVideo" autoplay playsinline />
+          <video ref="screenShareVideo" autoplay playsinline controls muted />
         </div>
         <div ref="aspect" class="player-aspect" />
       </div>
@@ -991,9 +991,21 @@
         return
       }
 
-      this.$nextTick(() => {
+      this.$nextTick(async () => {
         if (this._screenShareVideo) {
           this._screenShareVideo.srcObject = stream
+          
+          try {
+            await this._screenShareVideo.play()
+          } catch (err: any) {
+            this.$log.warn('screen share autoplay failed, retrying muted')
+            this._screenShareVideo.muted = true
+            try {
+              await this._screenShareVideo.play()
+            } catch (muteErr: any) {
+              this.$log.error('screen share play failed even when muted', muteErr)
+            }
+          }
         }
       })
     }
