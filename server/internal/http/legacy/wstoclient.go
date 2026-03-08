@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/gorilla/websocket"
 	"github.com/pion/webrtc/v3"
 	"github.com/spf13/viper"
 
@@ -752,6 +753,13 @@ func (s *session) wsToClient(msg []byte) error {
 
 	case event.SYSTEM_HEARTBEAT:
 		return nil
+
+	// Screen Share Events (passthrough to client, no legacy equivalent)
+	case event.SCREEN_SHARE_STATUS:
+		// forward raw backend message directly to client
+		s.muClient.Lock()
+		defer s.muClient.Unlock()
+		return s.connClient.WriteMessage(websocket.TextMessage, msg)
 
 	default:
 		return fmt.Errorf("unknown event type: %s", data.Event)

@@ -371,6 +371,13 @@ func (s *session) wsToBackend(msg []byte) error {
 			},
 		}, nil)
 
+	// Screen Share Events (passthrough to backend, no legacy equivalent)
+	case event.SCREEN_SHARE_START:
+		return s.toBackend(event.SCREEN_SHARE_START, nil)
+
+	case event.SCREEN_SHARE_STOP:
+		return s.toBackend(event.SCREEN_SHARE_STOP, nil)
+
 	default:
 		return fmt.Errorf("unknown event type: %s", header.Event)
 	}
