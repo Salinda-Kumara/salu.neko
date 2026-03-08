@@ -55,6 +55,11 @@ export const EVENT = {
     CREATE: 'broadcast/create',
     DESTROY: 'broadcast/destroy',
   },
+  SCREEN_SHARE: {
+    START: 'screen_share/start',
+    STOP: 'screen_share/stop',
+    STATUS: 'screen_share/status',
+  },
   ADMIN: {
     BAN: 'admin/ban',
     KICK: 'admin/kick',
@@ -80,6 +85,7 @@ export type WebSocketEvents =
   | FileTransferEvents
   | ScreenEvents
   | BroadcastEvents
+  | ScreenShareEvents
   | AdminEvents
 
 export type ControlEvents =
@@ -110,6 +116,11 @@ export type BroadcastEvents =
   | typeof EVENT.BROADCAST.STATUS
   | typeof EVENT.BROADCAST.CREATE
   | typeof EVENT.BROADCAST.DESTROY
+
+export type ScreenShareEvents =
+  | typeof EVENT.SCREEN_SHARE.START
+  | typeof EVENT.SCREEN_SHARE.STOP
+  | typeof EVENT.SCREEN_SHARE.STATUS
 
 export type AdminEvents =
   | typeof EVENT.ADMIN.BAN

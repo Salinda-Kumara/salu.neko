@@ -1,0 +1,121 @@
+# Minimal neko build for screen sharing only (no browser).
+# Usage: docker build -f Dockerfile.custom -t neko-screenshare .
+
+###############################
+# Stage 1: Build Server (Go)
+###############################
+FROM golang:1.24-bullseye AS server
+
+WORKDIR /src
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+    libx11-dev libxrandr-dev libxtst-dev libgtk-3-dev \
+    libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev; \
+    ARCH=$(dpkg --print-architecture); \
+    wget http://ftp.de.debian.org/debian/pool/main/libx/libxcvt/libxcvt-dev_0.1.2-1_${ARCH}.deb; \
+    wget http://ftp.de.debian.org/debian/pool/main/libx/libxcvt/libxcvt0_0.1.2-1_${ARCH}.deb; \
+    apt-get install --no-install-recommends ./libxcvt0_0.1.2-1_${ARCH}.deb ./libxcvt-dev_0.1.2-1_${ARCH}.deb; \
+    rm ./libxcvt0_0.1.2-1_${ARCH}.deb ./libxcvt-dev_0.1.2-1_${ARCH}.deb; \
+    apt-get clean -y; \
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/*
+
+COPY server/ .
+RUN ./build
+
+###############################
+# Stage 2: Build Client (Vue)
+###############################
+FROM node:18-bullseye-slim AS client
+
+WORKDIR /src
+
+COPY client/package*.json ./
+RUN npm install
+
+COPY client/ .
+RUN npm run build
+
+###############################
+# Stage 3: Runtime (minimal, no browser)
+###############################
+FROM debian:bullseye-slim AS runtime
+
+ARG USERNAME=neko
+ARG USER_UID=1000
+ARG USER_GID=$USER_UID
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+    wget ca-certificates python2 supervisor \
+    pulseaudio dbus-x11 xserver-xorg-video-dummy \
+    libcairo2 libxcb1 libxrandr2 libxv1 libopus0 libvpx6 \
+    zip curl \
+    xdotool xclip libgtk-3-0 \
+    gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly \
+    gstreamer1.0-pulseaudio; \
+    ARCH=$(dpkg --print-architecture); \
+    wget http://ftp.de.debian.org/debian/pool/main/libx/libxcvt/libxcvt0_0.1.2-1_${ARCH}.deb; \
+    apt-get install --no-install-recommends ./libxcvt0_0.1.2-1_${ARCH}.deb; \
+    rm ./libxcvt0_0.1.2-1_${ARCH}.deb; \
+    groupadd --gid $USER_GID $USERNAME; \
+    useradd --uid $USER_UID --gid $USERNAME --shell /bin/bash --create-home $USERNAME; \
+    adduser $USERNAME audio; \
+    adduser $USERNAME video; \
+    adduser $USERNAME pulse; \
+    mkdir /tmp/.X11-unix; \
+    chmod 1777 /tmp/.X11-unix; \
+    chown $USERNAME /tmp/.X11-unix/; \
+    mkdir -p /etc/neko /var/www /var/log/neko \
+    /tmp/runtime-$USERNAME \
+    /home/$USERNAME/.config/pulse  \
+    /home/$USERNAME/.local/share/xorg; \
+    chmod 1777 /var/log/neko; \
+    chown $USERNAME /var/log/neko/ /tmp/runtime-$USERNAME; \
+    chown -R $USERNAME:$USERNAME /home/$USERNAME; \
+    apt-get clean -y; \
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/*
+
+COPY runtime/.Xresources /home/$USERNAME/.Xresources
+RUN chown $USERNAME:$USERNAME /home/$USERNAME/.Xresources
+COPY runtime/dbus /usr/bin/dbus
+COPY runtime/default.pa /etc/pulse/default.pa
+COPY runtime/supervisord.conf /etc/neko/supervisord.conf
+COPY runtime/supervisord.dbus.conf /etc/neko/supervisord.dbus.conf
+COPY runtime/xorg.conf /etc/neko/xorg.conf
+COPY --chown=neko:neko runtime/icon-theme /home/$USERNAME/.icons/default
+COPY runtime/fontconfig/* /etc/fonts/conf.d/
+COPY runtime/fonts /usr/local/share/fonts
+
+ENV USER=$USERNAME
+ENV DISPLAY=:99.0
+ENV PULSE_SERVER=unix:/tmp/pulseaudio.socket
+ENV XDG_RUNTIME_DIR=/tmp/runtime-$USERNAME
+ENV NEKO_SERVER_BIND=:8080
+ENV NEKO_PLUGINS_ENABLED=true
+ENV NEKO_PLUGINS_DIR=/etc/neko/plugins/
+
+HEALTHCHECK --interval=10s --timeout=5s --retries=8 \
+    CMD wget -O - http://localhost:8080/health || exit 1
+
+CMD ["/usr/bin/supervisord", "-c", "/etc/neko/supervisord.conf"]
+
+###############################
+# Stage 4: Final image (no browser app)
+###############################
+FROM runtime
+
+LABEL net.m1k1o.neko.api-version=3
+
+# Copy built server and client
+COPY --from=server /src/bin/plugins/ /etc/neko/plugins/
+COPY --from=server /src/bin/neko /usr/bin/neko
+COPY --from=client /src/dist/ /var/www
+
+# Copy neko configuration
+COPY config.yml /etc/neko/neko.yaml

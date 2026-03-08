@@ -192,6 +192,13 @@ func (h *MessageHandlerCtx) Message(session types.Session, data types.WebSocketM
 		err = utils.Unmarshal(payload, data.Payload, func() error {
 			return h.sendBroadcast(session, payload)
 		})
+
+	// Screen Share Events
+	case event.SCREEN_SHARE_START:
+		err = h.screenShareStart(session)
+	case event.SCREEN_SHARE_STOP:
+		err = h.screenShareStop(session)
+
 	default:
 		return false
 	}

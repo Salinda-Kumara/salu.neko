@@ -23,9 +23,10 @@ import {
   SystemInitPayload,
   AdminLockResource,
   FileTransferListPayload,
+  ScreenShareStatusPayload,
 } from './messages'
 
-interface NekoEvents extends BaseEvents {}
+interface NekoEvents extends BaseEvents { }
 
 export class NekoClient extends BaseClient implements EventEmitter<NekoEvents> {
   private $vue!: Vue
@@ -55,6 +56,8 @@ export class NekoClient extends BaseClient implements EventEmitter<NekoEvents> {
     this.$accessor.user.reset()
     this.$accessor.video.reset()
     this.$accessor.chat.reset()
+    this.$accessor.video.setScreenShareStream(null)
+    this.$accessor.video.setScreenShareActive({ is_active: false })
   }
 
   login(password: string, displayname: string) {
@@ -121,6 +124,16 @@ export class NekoClient extends BaseClient implements EventEmitter<NekoEvents> {
 
   protected [EVENT.TRACK](event: RTCTrackEvent) {
     const { track, streams } = event
+
+    // check if this is a screen share track from another user
+    if (streams[0] && streams[0].id === 'screen-share') {
+      this.emit('info', `received screen share ${track.kind} track`)
+      if (track.kind === 'video') {
+        this.$accessor.video.setScreenShareStream(streams[0])
+      }
+      return
+    }
+
     if (track.kind === 'audio') {
       return
     }
@@ -129,7 +142,7 @@ export class NekoClient extends BaseClient implements EventEmitter<NekoEvents> {
     this.$accessor.video.setStream(0)
   }
 
-  protected [EVENT.DATA]() {}
+  protected [EVENT.DATA]() { }
 
   /////////////////////////////
   // System Events
@@ -402,6 +415,37 @@ export class NekoClient extends BaseClient implements EventEmitter<NekoEvents> {
   /////////////////////////////
   protected [EVENT.BROADCAST.STATUS](payload: BroadcastStatusPayload) {
     this.$accessor.settings.broadcastStatus(payload)
+  }
+
+  /////////////////////////////
+  // Screen Share Events
+  /////////////////////////////
+  protected [EVENT.SCREEN_SHARE.STATUS]({ is_active, sharing_session_id }: ScreenShareStatusPayload) {
+    this.$accessor.video.setScreenShareActive({ is_active, sharing_session_id })
+
+    if (is_active && sharing_session_id) {
+      const member = this.member(sharing_session_id)
+      const name = member ? member.displayname : sharing_session_id
+
+      this.$vue.$notify({
+        group: 'neko',
+        type: 'info',
+        title: `${name} started sharing their screen`,
+        duration: 5000,
+        speed: 1000,
+      })
+    } else {
+      this.$vue.$notify({
+        group: 'neko',
+        type: 'info',
+        title: 'Screen sharing stopped',
+        duration: 3000,
+        speed: 1000,
+      })
+
+      // clear the screen share stream
+      this.$accessor.video.setScreenShareStream(null)
+    }
   }
 
   /////////////////////////////

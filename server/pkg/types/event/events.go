@@ -86,3 +86,9 @@ const (
 	FILE_CHOOSER_DIALOG_OPENED = "file_chooser_dialog/opened"
 	FILE_CHOOSER_DIALOG_CLOSED = "file_chooser_dialog/closed"
 )
+
+const (
+	SCREEN_SHARE_START  = "screen_share/start"
+	SCREEN_SHARE_STOP   = "screen_share/stop"
+	SCREEN_SHARE_STATUS = "screen_share/status"
+)

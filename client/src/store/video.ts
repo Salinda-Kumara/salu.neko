@@ -20,6 +20,9 @@ export const state = () => ({
   muted: get<boolean>('muted', false),
   playing: false,
   playable: false,
+  screenShareActive: false,
+  screenShareSessionId: '' as string,
+  screenShareStream: null as MediaStream | null,
 })
 
 export const getters = getterTree(state, {
@@ -163,6 +166,21 @@ export const mutations = mutationTree(state, {
     state.vertical = 9
     state.playing = false
     state.playable = false
+    state.screenShareActive = false
+    state.screenShareSessionId = ''
+    state.screenShareStream = null
+  },
+
+  setScreenShareActive(state, { is_active, sharing_session_id }: { is_active: boolean; sharing_session_id?: string }) {
+    state.screenShareActive = is_active
+    state.screenShareSessionId = sharing_session_id || ''
+    if (!is_active) {
+      state.screenShareStream = null
+    }
+  },
+
+  setScreenShareStream(state, stream: MediaStream | null) {
+    state.screenShareStream = stream
   },
 })
 

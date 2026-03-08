@@ -72,6 +72,24 @@
       />
     </li>
     <li>
+      <i
+        :class="[
+          { disabled: !playable || (screenShareActiveByOther && !screenShareSelf) },
+          screenShareSelf ? 'fa-stop-circle' : 'fa-desktop',
+          screenShareSelf ? '' : 'faded',
+          'fas',
+        ]"
+        v-tooltip="{
+          content: screenShareSelf ? 'Stop sharing' : (screenShareActiveByOther ? 'Someone else is sharing' : 'Share screen'),
+          placement: 'top',
+          offset: 5,
+          boundariesElement: 'body',
+          delay: { show: 300, hide: 100 },
+        }"
+        @click.stop.prevent="toggleScreenShare"
+      />
+    </li>
+    <li>
       <div class="volume">
         <i
           :class="[volume === 0 || muted ? 'fa-volume-mute' : 'fa-volume-up', 'fas']"
@@ -333,6 +351,14 @@
       this.$accessor.remote.setLocked(locked)
     }
 
+    get screenShareSelf() {
+      return this.$client.screenShareActive
+    }
+
+    get screenShareActiveByOther() {
+      return this.$accessor.video.screenShareActive && !this.screenShareSelf
+    }
+
     toggleControl() {
       if (!this.playable) {
         return
@@ -379,6 +405,31 @@
         } catch (err: any) {
           this.$swal({
             title: this.$t('controls.mic_error') as string,
+            text: err.message,
+            icon: 'error',
+          })
+        }
+      }
+    }
+
+    async toggleScreenShare() {
+      if (!this.playable) {
+        return
+      }
+
+      // don't allow starting if someone else is sharing
+      if (this.screenShareActiveByOther) {
+        return
+      }
+
+      if (this.screenShareSelf) {
+        this.$client.disableScreenShare()
+      } else {
+        try {
+          await this.$client.enableScreenShare()
+        } catch (err: any) {
+          this.$swal({
+            title: 'Screen Share Error',
             text: err.message,
             icon: 'error',
           })

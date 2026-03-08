@@ -210,3 +210,12 @@ type SendBroadcast struct {
 	Subject string `json:"subject"`
 	Body    any    `json:"body"`
 }
+
+/////////////////////////////
+// Screen Share
+/////////////////////////////
+
+type ScreenShareStatus struct {
+	IsActive         bool   `json:"is_active"`
+	SharingSessionID string `json:"sharing_session_id,omitempty"`
+}

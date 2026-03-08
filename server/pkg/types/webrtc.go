@@ -67,4 +67,9 @@ type WebRTCManager interface {
 
 	CreatePeer(session Session) (*webrtc.SessionDescription, WebRTCPeer, error)
 	SetCursorPosition(x, y int)
+
+	StartScreenShare(session Session) error
+	StopScreenShare(session Session) error
+	ScreenShareActive() bool
+	ScreenShareSessionID() string
 }

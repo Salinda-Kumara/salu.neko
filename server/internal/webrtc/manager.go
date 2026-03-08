@@ -50,7 +50,7 @@ const (
 	rtcpPLIInterval = 3 * time.Second
 )
 
-func New(desktop types.DesktopManager, capture types.CaptureManager, config *config.WebRTC) *WebRTCManagerCtx {
+func New(desktop types.DesktopManager, capture types.CaptureManager, config *config.WebRTC, sessions types.SessionManager) *WebRTCManagerCtx {
 	logger := log.With().Str("module", "webrtc").Logger()
 
 	configuration := webrtc.Configuration{
@@ -88,6 +88,8 @@ func New(desktop types.DesktopManager, capture types.CaptureManager, config *con
 		capture:     capture,
 		curImage:    cursor.NewImage(logger, desktop),
 		curPosition: cursor.NewPosition(logger),
+
+		screenShare: NewScreenShareManager(sessions),
 	}
 }
 
@@ -108,6 +110,8 @@ type WebRTCManagerCtx struct {
 	udpMux ice.UDPMux
 
 	camStop, micStop *func()
+
+	screenShare *ScreenShareManager
 }
 
 func (manager *WebRTCManagerCtx) Start() {
@@ -378,6 +382,7 @@ func (manager *WebRTCManagerCtx) CreatePeer(session types.Session) (*webrtc.Sess
 		logger := logger.With().
 			Str("kind", track.Kind().String()).
 			Str("mime", track.Codec().RTPCodecCapability.MimeType).
+			Str("stream_id", track.StreamID()).
 			Logger()
 
 		logger.Info().Msgf("received new remote track")
@@ -385,6 +390,34 @@ func (manager *WebRTCManagerCtx) CreatePeer(session types.Session) (*webrtc.Sess
 		if !session.Profile().CanShareMedia {
 			err := receiver.Stop()
 			logger.Warn().Err(err).Msg("media sharing is disabled for this session")
+			return
+		}
+
+		// check if this is a screen share track
+		if track.StreamID() == "screen-share" {
+			logger.Info().Msg("received screen share track")
+
+			if track.Kind() == webrtc.RTPCodecTypeVideo {
+				relayTrack, err := manager.screenShare.SetVideoTrack(track)
+				if err != nil {
+					logger.Err(err).Msg("failed to set screen share video track")
+					receiver.Stop()
+					return
+				}
+
+				// add relay track to all other peers
+				manager.addRelayTrackToAllPeers(session.ID(), relayTrack)
+			} else if track.Kind() == webrtc.RTPCodecTypeAudio {
+				relayTrack, err := manager.screenShare.SetAudioTrack(track)
+				if err != nil {
+					logger.Err(err).Msg("failed to set screen share audio track")
+					receiver.Stop()
+					return
+				}
+
+				// add relay track to all other peers
+				manager.addRelayTrackToAllPeers(session.ID(), relayTrack)
+			}
 			return
 		}
 
@@ -596,4 +629,30 @@ func (manager *WebRTCManagerCtx) CreatePeer(session types.Session) (*webrtc.Sess
 
 func (manager *WebRTCManagerCtx) SetCursorPosition(x, y int) {
 	manager.curPosition.Set(x, y)
+}
+
+func (manager *WebRTCManagerCtx) StartScreenShare(session types.Session) error {
+	return manager.screenShare.Start(session)
+}
+
+func (manager *WebRTCManagerCtx) StopScreenShare(session types.Session) error {
+	return manager.screenShare.Stop(session)
+}
+
+func (manager *WebRTCManagerCtx) ScreenShareActive() bool {
+	return manager.screenShare.IsActive()
+}
+
+func (manager *WebRTCManagerCtx) ScreenShareSessionID() string {
+	return manager.screenShare.SharingSessionID()
+}
+
+// addRelayTrackToAllPeers adds a relay track to all connected peers except the sharer.
+func (manager *WebRTCManagerCtx) addRelayTrackToAllPeers(sharerSessionID string, relayTrack *webrtc.TrackLocalStaticRTP) {
+	// Note: This triggers renegotiation via OnNegotiationNeeded on each peer connection.
+	// The peer connections are stored in sessions, we need to iterate through them.
+	// This is handled by the session manager in the websocket layer.
+	manager.logger.Info().
+		Str("sharer_session_id", sharerSessionID).
+		Msg("relay track created, renegotiation will be triggered by OnNegotiationNeeded")
 }

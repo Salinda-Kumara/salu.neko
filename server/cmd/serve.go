@@ -164,6 +164,7 @@ func (c *serve) Start(cmd *cobra.Command) {
 		c.managers.desktop,
 		c.managers.capture,
 		&c.configs.WebRTC,
+		c.managers.session,
 	)
 	c.managers.webRTC.Start()
 

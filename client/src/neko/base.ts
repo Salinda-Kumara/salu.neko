@@ -31,6 +31,9 @@ export abstract class BaseClient extends EventEmitter<BaseEvents> {
   protected _micStream?: MediaStream
   protected _micSender?: RTCRtpSender
   protected _micActive = false
+  protected _screenStream?: MediaStream
+  protected _screenSenders: RTCRtpSender[] = []
+  protected _screenShareActive = false
 
   get id() {
     return this._id
@@ -93,45 +96,46 @@ export abstract class BaseClient extends EventEmitter<BaseEvents> {
 
     if (this._ws) {
       // reset all events
-      this._ws.onmessage = () => {}
-      this._ws.onerror = () => {}
-      this._ws.onclose = () => {}
+      this._ws.onmessage = () => { }
+      this._ws.onerror = () => { }
+      this._ws.onclose = () => { }
 
       try {
         this._ws.close()
-      } catch (err) {}
+      } catch (err) { }
 
       this._ws = undefined
     }
 
     if (this._channel) {
       // reset all events
-      this._channel.onmessage = () => {}
-      this._channel.onerror = () => {}
-      this._channel.onclose = () => {}
+      this._channel.onmessage = () => { }
+      this._channel.onerror = () => { }
+      this._channel.onclose = () => { }
 
       try {
         this._channel.close()
-      } catch (err) {}
+      } catch (err) { }
 
       this._channel = undefined
     }
 
     if (this._peer) {
       // reset all events
-      this._peer.onconnectionstatechange = () => {}
-      this._peer.onsignalingstatechange = () => {}
-      this._peer.oniceconnectionstatechange = () => {}
-      this._peer.ontrack = () => {}
+      this._peer.onconnectionstatechange = () => { }
+      this._peer.onsignalingstatechange = () => { }
+      this._peer.oniceconnectionstatechange = () => { }
+      this._peer.ontrack = () => { }
 
       try {
         this._peer.close()
-      } catch (err) {}
+      } catch (err) { }
 
       this._peer = undefined
     }
 
     this.disableMicrophone()
+    this.disableScreenShare()
 
     this._state = 'disconnected'
     this._displayname = undefined
@@ -182,6 +186,86 @@ export abstract class BaseClient extends EventEmitter<BaseEvents> {
 
     this._micActive = false
     this.emit('info', 'microphone disabled')
+  }
+
+  get screenShareActive() {
+    return this._screenShareActive
+  }
+
+  public async enableScreenShare(): Promise<void> {
+    if (!this._peer) {
+      this.emit('warn', 'attempting to enable screen share with no peer connection')
+      return
+    }
+
+    if (this._screenShareActive) {
+      this.emit('debug', 'screen share already active')
+      return
+    }
+
+    try {
+      // request screen capture with audio
+      this._screenStream = await (navigator.mediaDevices as any).getDisplayMedia({
+        video: true,
+        audio: true,
+      })
+
+      if (!this._screenStream) {
+        throw new Error('failed to get display media stream')
+      }
+
+      // notify server that we're starting screen share
+      this.sendMessage(EVENT.SCREEN_SHARE.START)
+
+      const stream = this._screenStream
+
+      // add all tracks from the screen capture to the peer connection
+      for (const track of stream.getTracks()) {
+        const sender = this._peer.addTrack(track, stream)
+        this._screenSenders.push(sender)
+        this.emit('info', `screen share track added: ${track.kind} - ${track.label}`)
+      }
+
+      // listen for the user stopping the share via browser UI
+      const videoTrack = stream.getVideoTracks()[0]
+      if (videoTrack) {
+        videoTrack.addEventListener('ended', () => {
+          this.disableScreenShare()
+        })
+      }
+
+      this._screenShareActive = true
+      this.emit('info', 'screen share enabled')
+    } catch (err: any) {
+      this.emit('error', err)
+      throw err
+    }
+  }
+
+  public disableScreenShare(): void {
+    if (this._screenSenders.length > 0 && this._peer) {
+      for (const sender of this._screenSenders) {
+        try {
+          this._peer.removeTrack(sender)
+        } catch (err) {
+          this.emit('warn', 'failed to remove screen share track from peer', err)
+        }
+      }
+      this._screenSenders = []
+    }
+
+    if (this._screenStream) {
+      this._screenStream.getTracks().forEach((t) => t.stop())
+      this._screenStream = undefined
+    }
+
+    if (this._screenShareActive) {
+      // notify server that we're stopping screen share
+      this.sendMessage(EVENT.SCREEN_SHARE.STOP)
+    }
+
+    this._screenShareActive = false
+    this.emit('info', 'screen share disabled')
   }
 
   public sendData(event: 'wheel' | 'mousemove', data: { x: number; y: number }): void

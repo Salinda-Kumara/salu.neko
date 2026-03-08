@@ -35,6 +35,18 @@
         <div v-else-if="mutedOverlay && muted" class="player-overlay" @click.stop.prevent="unmute">
           <i class="fas fa-volume-up" />
         </div>
+        <div
+          v-if="screenShareStream"
+          class="screen-share-overlay"
+          :style="screenShareStyle"
+          @mousedown.stop="onScreenShareDragStart"
+        >
+          <div class="screen-share-header">
+            <span>{{ screenShareDisplayName }}</span>
+            <i class="fas fa-times" @click.stop="closeScreenShareOverlay" />
+          </div>
+          <video ref="screenShareVideo" autoplay playsinline />
+        </div>
         <div ref="aspect" class="player-aspect" />
       </div>
       <ul v-if="!fullscreen && !hideControls" class="video-menu top">
@@ -205,6 +217,45 @@
           display: block;
           padding-bottom: 56.25%;
         }
+
+        .screen-share-overlay {
+          position: absolute;
+          bottom: 20px;
+          right: 20px;
+          width: 320px;
+          background: rgba(0, 0, 0, 0.85);
+          border-radius: 8px;
+          overflow: hidden;
+          z-index: 100;
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+          cursor: move;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+
+          .screen-share-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 10px;
+            background: rgba(0, 0, 0, 0.6);
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.8);
+
+            i {
+              cursor: pointer;
+              padding: 2px 4px;
+              border-radius: 3px;
+
+              &:hover {
+                background: rgba(255, 255, 255, 0.2);
+              }
+            }
+          }
+
+          video {
+            width: 100%;
+            display: block;
+          }
+        }
       }
     }
   }
@@ -239,6 +290,7 @@
     @Ref('aspect') readonly _aspect!: HTMLElement
     @Ref('player') readonly _player!: HTMLElement
     @Ref('video') readonly _video!: HTMLVideoElement
+    @Ref('screenShareVideo') readonly _screenShareVideo!: HTMLVideoElement
     @Ref('resolution') readonly _resolution!: Resolution
     @Ref('clipboard') readonly _clipboard!: Clipboard
 
@@ -253,6 +305,11 @@
     private fullscreen = false
     private mutedOverlay = true
     private lastTextAreaValue = ''
+    private screenShareHidden = false
+    private screenShareDragX = 0
+    private screenShareDragY = 0
+    private screenSharePosX = -1
+    private screenSharePosY = -1
 
     get admin() {
       return this.$accessor.user.admin
@@ -898,6 +955,74 @@
     openMobileKeyboard() {
       // focus opens the keyboard on mobile
       this._overlay.focus()
+    }
+
+    // Screen Share Overlay
+    get screenShareStream(): MediaStream | null {
+      if (this.screenShareHidden) return null
+      return this.$accessor.video.screenShareStream
+    }
+
+    get screenShareDisplayName(): string {
+      const sessionId = this.$accessor.video.screenShareSessionId
+      if (!sessionId) return 'Screen Share'
+      const member = this.$accessor.user.members[sessionId]
+      return member ? `${member.displayname}'s screen` : 'Screen Share'
+    }
+
+    get screenShareStyle() {
+      if (this.screenSharePosX >= 0 && this.screenSharePosY >= 0) {
+        return {
+          left: `${this.screenSharePosX}px`,
+          top: `${this.screenSharePosY}px`,
+          right: 'auto',
+          bottom: 'auto',
+        }
+      }
+      return {}
+    }
+
+    @Watch('screenShareStream')
+    onScreenShareStreamChanged(stream: MediaStream | null) {
+      if (!stream) {
+        this.screenShareHidden = false
+        this.screenSharePosX = -1
+        this.screenSharePosY = -1
+        return
+      }
+
+      this.$nextTick(() => {
+        if (this._screenShareVideo) {
+          this._screenShareVideo.srcObject = stream
+        }
+      })
+    }
+
+    closeScreenShareOverlay() {
+      this.screenShareHidden = true
+    }
+
+    onScreenShareDragStart(e: MouseEvent) {
+      if ((e.target as HTMLElement).tagName === 'I') return // skip close button
+
+      const el = (e.currentTarget as HTMLElement)
+      const rect = el.getBoundingClientRect()
+      const offsetX = e.clientX - rect.left
+      const offsetY = e.clientY - rect.top
+      const parentRect = this._container.getBoundingClientRect()
+
+      const onMouseMove = (e: MouseEvent) => {
+        this.screenSharePosX = e.clientX - parentRect.left - offsetX
+        this.screenSharePosY = e.clientY - parentRect.top - offsetY
+      }
+
+      const onMouseUp = () => {
+        document.removeEventListener('mousemove', onMouseMove)
+        document.removeEventListener('mouseup', onMouseUp)
+      }
+
+      document.addEventListener('mousemove', onMouseMove)
+      document.addEventListener('mouseup', onMouseUp)
     }
   }
 </script>

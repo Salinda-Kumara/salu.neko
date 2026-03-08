@@ -45,6 +45,7 @@ export type WebSocketPayloads =
   | AdminLockPayload
   | BroadcastStatusPayload
   | BroadcastCreatePayload
+  | ScreenShareStatusPayload
 
 export interface WebSocketMessage {
   event: WebSocketEvents | string
@@ -267,4 +268,12 @@ export type AdminLockResource = 'login' | 'control' | 'file_transfer'
 
 export interface AdminLockPayload {
   resource: AdminLockResource
+}
+
+/*
+  SCREEN SHARE PAYLOADS
+*/
+export interface ScreenShareStatusPayload {
+  is_active: boolean
+  sharing_session_id?: string
 }

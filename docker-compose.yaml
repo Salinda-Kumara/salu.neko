@@ -1,14 +1,22 @@
+version: "3"
 services:
   neko:
-    image: "ghcr.io/m1k1o/neko/firefox:latest"
-    restart: "unless-stopped"
+    build:
+      context: .
+      dockerfile: Dockerfile.custom
+    image: "neko-screenshare:latest"
+    restart: "always"
     shm_size: "2gb"
     ports:
-      - "8080:8080"
-      - "52000-52100:52000-52100/udp"
+      - "8080:8080" # Web interface
+      - "52000-52100:52000-52100/udp" # WebRTC video/audio stream
     environment:
-      NEKO_DESKTOP_SCREEN: 1920x1080@30
-      NEKO_MEMBER_MULTIUSER_USER_PASSWORD: neko
-      NEKO_MEMBER_MULTIUSER_ADMIN_PASSWORD: admin
-      NEKO_WEBRTC_EPR: 52000-52100
-      NEKO_WEBRTC_ICELITE: 1
+      NEKO_SCREEN: 1920x1080@30
+      NEKO_PASSWORD: "neko"
+      NEKO_PASSWORD_ADMIN: "admin"
+      NEKO_BIND: :8080
+      NEKO_EPR: 52000-52100
+      NEKO_ICELITE: "true"
+      NEKO_NAT1TO1: 192.168.1.102
+      NEKO_CONTROL_PROTECTION: "false"
+      NEKO_IMPLICIT_CONTROL: "true"
