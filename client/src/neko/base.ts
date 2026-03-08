@@ -204,6 +204,13 @@ export abstract class BaseClient extends EventEmitter<BaseEvents> {
     }
 
     try {
+      // getDisplayMedia requires HTTPS (secure context)
+      if (!navigator.mediaDevices || !(navigator.mediaDevices as any).getDisplayMedia) {
+        throw new Error(
+          'Screen sharing requires HTTPS. Please access this page over HTTPS or add this origin to chrome://flags/#unsafely-treat-insecure-origin-as-secure'
+        )
+      }
+
       // request screen capture with audio
       this._screenStream = await (navigator.mediaDevices as any).getDisplayMedia({
         video: true,
