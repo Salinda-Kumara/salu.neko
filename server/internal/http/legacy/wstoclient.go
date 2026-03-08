@@ -754,12 +754,19 @@ func (s *session) wsToClient(msg []byte) error {
 	case event.SYSTEM_HEARTBEAT:
 		return nil
 
-	// Screen Share Events (passthrough to client, no legacy equivalent)
+	// Screen Share Events (passthrough to client in v2-compatible format)
 	case event.SCREEN_SHARE_STATUS:
-		// forward raw backend message directly to client
-		s.muClient.Lock()
-		defer s.muClient.Unlock()
-		return s.connClient.WriteMessage(websocket.TextMessage, msg)
+		request := &message.ScreenShareStatus{}
+		err := json.Unmarshal(data.Payload, request)
+		if err != nil {
+			return err
+		}
+
+		return s.toClient(map[string]any{
+			"event":              event.SCREEN_SHARE_STATUS,
+			"is_active":         request.IsActive,
+			"sharing_session_id": request.SharingSessionID,
+		})
 
 	default:
 		return fmt.Errorf("unknown event type: %s", data.Event)
