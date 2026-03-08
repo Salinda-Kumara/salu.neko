@@ -39,7 +39,40 @@ COPY client/ .
 RUN npm run build
 
 ###############################
-# Stage 3: Runtime (minimal, no browser)
+# Stage 3: Build Xorg Dependencies
+###############################
+FROM debian:bullseye-slim AS xorg-deps
+
+WORKDIR /xorg
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y \
+    git gcc pkgconf autoconf automake libtool make xorg-dev xutils-dev \
+    && rm -rf /var/lib/apt/lists/*;
+
+COPY utils/xorg-deps/ /xorg/
+
+# build xf86-video-dummy v0.3.8 with RandR support
+RUN set -eux; \
+    cd xf86-video-dummy/v0.3.8; \
+    patch -p1 < ../01_v0.3.8_xdummy-randr.patch; \
+    autoreconf -v --install; \
+    ./configure; \
+    make -j$(nproc); \
+    make install;
+
+# build custom input driver
+RUN set -eux; \
+    cd xf86-input-neko; \
+    ./autogen.sh --prefix=/usr; \
+    ./configure; \
+    make -j$(nproc); \
+    make install;
+
+###############################
+# Stage 4: Runtime (minimal, no browser)
 ###############################
 FROM debian:bullseye-slim AS runtime
 
@@ -106,7 +139,7 @@ HEALTHCHECK --interval=10s --timeout=5s --retries=8 \
 CMD ["/usr/bin/supervisord", "-c", "/etc/neko/supervisord.conf"]
 
 ###############################
-# Stage 4: Final image (no browser app)
+# Stage 5: Final image (no browser app)
 ###############################
 FROM runtime
 
@@ -116,6 +149,10 @@ LABEL net.m1k1o.neko.api-version=3
 COPY --from=server /src/bin/plugins/ /etc/neko/plugins/
 COPY --from=server /src/bin/neko /usr/bin/neko
 COPY --from=client /src/dist/ /var/www
+
+# Copy xorg drivers (required for neko input/display)
+COPY --from=xorg-deps /usr/local/lib/xorg/modules/drivers/dummy_drv.so /usr/lib/xorg/modules/drivers/dummy_drv.so
+COPY --from=xorg-deps /usr/local/lib/xorg/modules/input/neko_drv.so /usr/lib/xorg/modules/input/neko_drv.so
 
 # Copy neko configuration
 COPY config.yml /etc/neko/neko.yaml
