@@ -125,11 +125,23 @@ export class NekoClient extends BaseClient implements EventEmitter<NekoEvents> {
   protected [EVENT.TRACK](event: RTCTrackEvent) {
     const { track, streams } = event
 
+    // log all incoming tracks for debugging
+    this.emit('info', `[TRACK] kind=${track.kind} id=${track.id} label=${track.label} streamId=${streams[0]?.id || 'no-stream'} streams=${streams.length}`)
+
     // check if this is a screen share track from another user
-    if (streams[0] && streams[0].id === 'screen-share') {
+    // check stream ID, track ID, or track label for screen-share identifiers
+    const isScreenShare = (
+      (streams[0] && streams[0].id === 'screen-share') ||
+      track.id.includes('screen-share') ||
+      track.label.includes('screen-share')
+    )
+
+    if (isScreenShare) {
       this.emit('info', `received screen share ${track.kind} track`)
       if (track.kind === 'video') {
-        this.$accessor.video.setScreenShareStream(streams[0])
+        // use the stream if available, otherwise create one from the track
+        const stream = streams[0] || new MediaStream([track])
+        this.$accessor.video.setScreenShareStream(stream)
       }
       return
     }
